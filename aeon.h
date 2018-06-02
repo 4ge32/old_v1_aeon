@@ -302,3 +302,6 @@ static inline struct aeon_inode *aeon_get_inode_by_ino(struct super_block *sb, u
 int aeon_init_inode_inuse_list(struct super_block *);
 int aeon_init_inode_table(struct super_block *);
 struct inode *aeon_iget(struct super_block *, unsigned long);
+
+/* file.h  */
+extern const struct file_operations aeon_dax_file_operations;

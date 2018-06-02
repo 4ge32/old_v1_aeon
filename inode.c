@@ -1,4 +1,6 @@
 #include <linux/fs.h>
+#include <linux/dax.h>
+
 #include "aeon.h"
 
 int aeon_insert_range_node(struct rb_root *tree, struct aeon_range_node *new_node, enum node_type type)
@@ -24,7 +26,7 @@ int aeon_init_inode_inuse_list(struct super_block *sb)
 	struct inode_map *inode_map;
 	unsigned long range_high;
 	int i;
-	int ret;
+	//int ret;
 
 	return 0;
 
@@ -106,10 +108,7 @@ static int aeon_read_inode(struct super_block *sb, struct inode *inode, u64 pi_a
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFREG:
 		//inode->i_op = &aeon_file_inode_operations;
-		//if (inplace_data_updates && wprotect == 0)
-		//	inode->i_fop = &aeon_dax_file_operations;
-		//else
-		//	inode->i_fop = &aeon_wrap_file_operations;
+		inode->i_fop = &aeon_dax_file_operations;
 		break;
 	case S_IFDIR:
 		//inode->i_op = &aeon_dir_inode_operations;
@@ -201,3 +200,18 @@ fail:
 	iget_failed(inode);
 	return ERR_PTR(err);
 }
+
+static int aeon_writepages(struct address_space *mapping, struct writeback_control *wbc)
+{
+	int ret;
+
+	aeon_dbg("%s: START", __func__);
+	ret = dax_writeback_mapping_range(mapping, mapping->host->i_sb->s_bdev, wbc);
+	aeon_dbg("%s: FINISH", __func__);
+
+	return ret;
+}
+
+const struct address_space_operations aeon_aops_dax = {
+	.writepages   = aeon_writepages,
+};

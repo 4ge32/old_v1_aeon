@@ -57,12 +57,17 @@ void aeon_evict_inode(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
 	struct aeon_inode_info *ai = AEON_I(inode);
-	struct aeon_inode_info_header *aih = &ai->header;
+	struct aeon_inode_info_header *sih = &ai->header;
 	struct aeon_inode *pi = aeon_get_inode(sb, inode);
 
-	if (!aih) {
-		aeon_dbg("%s: ino %lu aih is NULL\n", __func__, inode->i_ino);
+	if (!sih) {
+		aeon_dbg("%s: ino %lu sih is NULL\n", __func__, inode->i_ino);
 		goto out;
+	}
+
+	if (pi && pi->aeon_ino != inode->i_ino) {
+		aeon_dbg("%s: inode %lu ino does not match %llu\n",
+				__func__, inode->i_ino, pi->aeon_ino);
 	}
 
 out:
