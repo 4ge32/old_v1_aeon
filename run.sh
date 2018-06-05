@@ -2,18 +2,25 @@
 
 FS="aeon"
 DEV=/dev/pmem0
+MOUNT_POINT=/mnt
 
 run () {
-  sudo umount mnt
+  sudo umount $MOUNT_POINT
   sudo rmmod $FS
   make
   sudo insmod $FS.ko
-  sudo mount -t $FS -o init $DEV /mnt
+  sudo mount -t $FS -o init $DEV $MOUNT_POINT
+  dmesg
+}
+
+rrun() {
+  sudo umount $MOUNT_POINT
+  sudo mount -t $FS $DEV $MOUNT_POINT
   dmesg
 }
 
 clean () {
-  sudo umount mnt
+  sudo umount $MOUNT_POINT
   sudo rmmod $FS
   make clean
 }
@@ -28,6 +35,9 @@ case "$1" in
     ;;
   test)
     fs_test
+    ;;
+  rt)
+    rrun
     ;;
   *)
     run

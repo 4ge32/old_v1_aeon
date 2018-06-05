@@ -2,11 +2,8 @@
 #include <linux/dax.h>
 
 #include "aeon.h"
-
-int aeon_insert_range_node(struct rb_root *tree, struct aeon_range_node *new_node, enum node_type type)
-{
-	return 0;
-}
+#include "inode.h"
+#include "balloc.h"
 
 inline int aeon_insert_inodetree(struct aeon_sb_info *sbi, struct aeon_range_node *new_node, int cpu)
 {
@@ -26,7 +23,7 @@ int aeon_init_inode_inuse_list(struct super_block *sb)
 	struct inode_map *inode_map;
 	unsigned long range_high;
 	int i;
-	//int ret;
+	int ret;
 
 	return 0;
 
@@ -44,7 +41,7 @@ int aeon_init_inode_inuse_list(struct super_block *sb)
 
 		range_node->range_low = 0;
 		range_node->range_high = range_high;
-		//ret = aeon_insert_inodetree(sbi, range_node, i);
+		ret = aeon_insert_inodetree(sbi, range_node, i);
 	}
 
 	return 0;
@@ -191,7 +188,7 @@ struct inode *aeon_iget(struct super_block *sb, unsigned long ino)
 	inode->i_ino = ino;
 	inode->i_mode = 0755;
 	inode->i_sb = sb;
-	inode->i_mode = S_IFDIR | 0777;
+	inode->i_mode |= S_IFDIR;
 
 	unlock_new_inode(inode);
 	aeon_dbg("%s: FINISH", __func__);

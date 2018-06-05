@@ -5,12 +5,42 @@
 #include <linux/pfn_t.h>
 #include <linux/genhd.h>
 #include <linux/dcache.h>
+#include <linux/backing-dev-defs.h>
+#include <linux/parser.h>
 
 #include "aeon.h"
+#include "inode.h"
+#include "balloc.h"
+#include "mprotect.h"
 
 static struct kmem_cache *aeon_inode_cachep;
 static struct kmem_cache *aeon_range_node_cachep;
 int support_clwb = 1;
+int wprotect = 0;
+
+void aeon_err_msg(struct super_block *sb, const char *fmt, ...)
+{
+	va_list args;
+
+	printk(KERN_CRIT "aeon error: ");
+	va_start(args, fmt);
+	vprintk(fmt, args);
+	va_end(args);
+
+}
+
+inline void aeon_sync_super(struct super_block *sb)
+{
+	struct aeon_sb_info *sbi = AEON_SB(sb);
+	struct aeon_super_block *super = aeon_get_super(sb);
+
+	aeon_memunlock_super(sb);
+
+	memcpy_to_pmem_nocache((void *)super, (void *)sbi->aeon_sb, sizeof(struct aeon_super_block));
+	PERSISTENT_BARRIER();
+
+	aeon_memlock_super(sb);
+}
 
 static struct inode *aeon_alloc_inode(struct super_block *sb)
 {
@@ -74,14 +104,6 @@ out:
 	aeon_dbg("%s: FAILED\n", __func__);
 }
 
-static struct super_operations aeon_sops = {
-	.alloc_inode   = aeon_alloc_inode,
-	.destroy_inode = aeon_destroy_inode,
-	.write_inode   = aeon_write_inode,
-	.dirty_inode   = aeon_dirty_inode,
-	.evict_inode   = aeon_evict_inode,
-};
-
 struct aeon_range_node *aeon_alloc_range_node(struct super_block *sb)
 {
 	struct aeon_range_node *p;
@@ -133,8 +155,59 @@ static void destroy_inodecache(void)
 	kmem_cache_destroy(aeon_inode_cachep);
 }
 
-static int aeon_get_nvmm_info(struct super_block *sb,
-	struct aeon_sb_info *sbi)
+static void destroy_rangenode_cache(void)
+{
+	kmem_cache_destroy(aeon_range_node_cachep);
+}
+
+static struct super_operations aeon_sops = {
+	.alloc_inode   = aeon_alloc_inode,
+	.destroy_inode = aeon_destroy_inode,
+	.write_inode   = aeon_write_inode,
+	.dirty_inode   = aeon_dirty_inode,
+	//.evict_inode   = aeon_evict_inode,
+};
+
+enum {
+	Opt_init, Opt_dax
+};
+
+static const match_table_t tokens = {
+	{ Opt_init,  "init" },
+	{ Opt_dax,   "dax" },
+};
+
+static int aeon_parse_options(char *options, struct aeon_sb_info *sbi, bool remount)
+{
+	char *p;
+	substring_t args[MAX_OPT_ARGS];
+
+	if (!options)
+		return 0;
+
+	while ((p = strsep(&options, ",")) != NULL) {
+		int token;
+
+		if (!*p)
+			continue;
+
+		token = match_token(p, tokens, args);
+		switch (token) {
+		case Opt_init:
+			set_opt(sbi->s_mount_opt, FORMAT);
+			break;
+		case Opt_dax:
+			set_opt(sbi->s_mount_opt, DAX);
+			break;
+		default:
+			break;
+		}
+	}
+
+	return 0;
+}
+
+static int aeon_get_nvmm_info(struct super_block *sb, struct aeon_sb_info *sbi)
 {
 	void *virt_addr = NULL;
 	pfn_t __pfn_t;
@@ -147,7 +220,7 @@ static int aeon_get_nvmm_info(struct super_block *sb,
 	aeon_dbg("%s: dax_supported = %d; bdev->super=0x%p",
 		 __func__, ret, sb->s_bdev->bd_super);
 	if (ret) {
-		//aeon_dbg(sb, "device does not support DAX\n");
+		aeon_dbg("device does not support DAX\n");
 		return ret;
 	}
 
@@ -155,7 +228,7 @@ static int aeon_get_nvmm_info(struct super_block *sb,
 
 	dax_dev = fs_dax_get_by_host(sb->s_bdev->bd_disk->disk_name);
 	if (!dax_dev) {
-		//aeon_err(sb, "Couldn't retrieve DAX device.\n");
+		aeon_err(sb, "Couldn't retrieve DAX device.\n");
 		return -EINVAL;
 	}
 	sbi->s_dax_dev = dax_dev;
@@ -163,14 +236,14 @@ static int aeon_get_nvmm_info(struct super_block *sb,
 	size = dax_direct_access(sbi->s_dax_dev, 0, LONG_MAX/PAGE_SIZE,
 				 &virt_addr, &__pfn_t) * PAGE_SIZE;
 	if (size <= 0) {
-		//aeon_err(sb, "direct_access failed\n");
+		aeon_err(sb, "direct_access failed\n");
 		return -EINVAL;
 	}
 
 	sbi->virt_addr = virt_addr;
 
 	if (!sbi->virt_addr) {
-		//aeon_err(sb, "ioremap of the aeon image failed(1)\n");
+		aeon_err(sb, "ioremap of the aeon image failed(1)\n");
 		return -EINVAL;
 	}
 
@@ -184,11 +257,11 @@ static int aeon_get_nvmm_info(struct super_block *sb,
 	return 0;
 }
 
-//static void aeon_root_check(struct super_block *sb, struct aeon_inode *root_pi)
-//{
-//	if (!S_ISDIR(le16_to_cpu(root_pi->i_mode)))
-//		aeon_dbg("root is not a directory\n");
-//}
+static void aeon_root_check(struct super_block *sb, struct aeon_inode *root_pi)
+{
+	if (!S_ISDIR(le16_to_cpu(root_pi->i_mode)))
+		aeon_dbg("root is not a directory\n");
+}
 
 static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 {
@@ -198,24 +271,26 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 	struct aeon_super_block *aeon_sb;
 	int i = 0;
 
-	sbi->num_blocks = ((unsigned long)(size) >> PAGE_SHIFT);
+	aeon_info("%s: START\n", __func__);
 
-	aeon_dbg("%s: %d\n", __func__, i++);
+	sbi->num_blocks = ((unsigned long)(size) >> PAGE_SHIFT);
+	aeon_dbg("%s: num_blocks %ld\n", __func__, sbi->num_blocks);
+
 	sbi->blocksize = blocksize = AEON_DEF_BLOCK_SIZE_4K;
 	aeon_set_blocksize(sb, sbi->blocksize);
 
-	aeon_dbg("%s: %d\n", __func__, i++);
 	aeon_sb = aeon_get_super(sb);
+	//sbi->aeon_sb = aeon_sb;
 
-	aeon_dbg("%s: %d\n", __func__, i++);
+	aeon_dbg("%s: %d, aeon_get_inode_by_ino, %d\n", __func__, i, AEON_BLOCKNODE_INO);
 	pi = aeon_get_inode_by_ino(sb, AEON_BLOCKNODE_INO);
 	aeon_dbg("%s: %d, addr 0x%lx\n", __func__, i++, (unsigned long)pi);
 	pi->aeon_ino = AEON_BLOCKNODE_INO;
 	aeon_dbg("%s: %d, addr 0x%lx, aeon_ino %llu\n", __func__, i++, (unsigned long)pi, pi->aeon_ino);
 	//aeon_flush_buffer(pi, CACHELINE_SIZE, 1);
 
-	aeon_dbg("%s: %d\n", __func__, i++);
-	aeon_init_blockmap(sb, 0);
+	aeon_dbg("%s: init_blockmap\n", __func__);
+	aeon_init_blockmap(sb);
 
 	aeon_dbg("%s: %d\n", __func__, i++);
 	if (aeon_init_inode_inuse_list(sb) < 0) {
@@ -231,23 +306,37 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 
 	aeon_dbg("%s: %d\n", __func__, i++);
 	sbi->aeon_sb->s_size = cpu_to_le64(size);
+	sbi->aeon_sb->s_magic = AEON_MAGIC;
+
+	aeon_sync_super(sb);
 
 	aeon_dbg("%s: %d\n", __func__, i++);
 	root_i = aeon_get_inode_by_ino(sb, AEON_ROOT_INO);
+	root_i->i_mode = cpu_to_le16(sbi->mode | S_IFDIR);
+	root_i->i_uid = cpu_to_le32(from_kuid(&init_user_ns, sbi->uid));
+	root_i->i_gid = cpu_to_le32(from_kgid(&init_user_ns, sbi->gid));
+	root_i->i_size = cpu_to_le64(sb->s_blocksize);
+	root_i->i_atime = root_i->i_mtime = root_i->i_ctime =
+		cpu_to_le32(get_seconds());
+	root_i->aeon_ino = cpu_to_le64(AEON_ROOT_INO);
+
+	aeon_info("%s: START\n", __func__);
 
 	return root_i;
 }
 
 static int aeon_fill_super(struct super_block *sb, void *data, int silent)
 {
-	//struct aeon_super_block *asb;
 	struct aeon_inode *root_pi;
 	struct aeon_sb_info *sbi;
 	struct inode *root_i;
 	struct inode_map *inode_map;
-	//unsigned long blocksize;
+	unsigned long blocksize;
+	struct aeon_super_block *super;
 	int ret = -EINVAL;
 	int i;
+
+	aeon_dbg("%s:START\n", __func__);
 
 	sbi = kzalloc(sizeof(struct aeon_sb_info), GFP_KERNEL);
 	if (!sbi)
@@ -259,18 +348,16 @@ static int aeon_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	sb->s_fs_info = sbi;
-	sb->s_op = &aeon_sops;
 
 	sbi->cpus = num_online_cpus();
 	sbi->map_id = 0;
 
-	aeon_dbg("The number of cpus: %d\n", sbi->cpus);
+	aeon_dbg("The number of cpus - %d\n", sbi->cpus);
+	aeon_dbg("block device - %s\n", sb->s_bdev->bd_disk->disk_name);
 
-	aeon_dbg("START: aeon_get_nvmm_info");
 	ret = aeon_get_nvmm_info(sb, sbi);
 	if (ret)
 		goto out;
-	aeon_dbg("FINISH: aeon_get_nvmm_info");
 
 	sbi->mode = (0755);
 	sbi->uid  = current_fsuid();
@@ -290,43 +377,60 @@ static int aeon_fill_super(struct super_block *sb, void *data, int silent)
 
 	mutex_init(&sbi->s_lock);
 
-	sbi->zeroed_page = kzalloc(PAGE_SIZE, GFP_KERNEL);
-	if (!sbi->zeroed_page) {
-		ret = -ENOMEM;
-		goto out1;
-	}
-
 	aeon_dbg("START: aeon_alloc_block_free_lists");
 	if (aeon_alloc_block_free_lists(sb)) {
 		ret = -ENOMEM;
-		goto out2;
+		goto out1;
 	}
 	aeon_dbg("FINISH: aeon_alloc_block_free_lists");
 
+	ret = aeon_parse_options(data, sbi, 0);
+	if (ret) {
+		aeon_err(sb, "%s: failed to parse aeon command line options.", __func__);
+		goto out;
+	}
 
-	aeon_dbg("START: aeon_init");
-	root_pi = aeon_init(sb, sbi->initsize);
-	ret = -ENOMEM;
-	if (IS_ERR(root_pi))
-		goto out2;
-	aeon_dbg("FINISH: aeon_init");
+	if (sbi->s_mount_opt & AEON_MOUNT_FORMAT) {
+		aeon_dbg("START: aeon_init");
+		root_pi = aeon_init(sb, sbi->initsize);
+		if (IS_ERR(root_pi)) {
+			ret = -ENOMEM;
+			goto out1;
+		}
+		aeon_dbg("FINISH: aeon_init");
+		goto setup_sb;
+	}
+
+	blocksize = le32_to_cpu(sbi->aeon_sb->s_blocksize);
+	aeon_set_blocksize(sb, blocksize);
+
+	root_pi = aeon_get_inode_by_ino(sb, AEON_ROOT_INO);
+	super = aeon_get_super(sb);
+	aeon_dbg("magic - %x\n", le32_to_cpu(super->s_magic));
+
+	aeon_root_check(sb, root_pi);
+
+setup_sb:
+	sb->s_magic = le32_to_cpu(sbi->aeon_sb->s_magic);
+	sb->s_op = &aeon_sops;
+
+	aeon_dbg("magic - %lx\n", sb->s_magic);
 
 	aeon_dbg("START: aeon_iget");
 	root_i = aeon_iget(sb, AEON_ROOT_INO);
-	aeon_dbg("MIDDLE: aeon_iget");
 	if (IS_ERR(root_i)) {
 		ret = -ENOMEM;
 		aeon_dbg("%s ERR root_i\n", __func__);
-		goto out2;
+		goto out1;
 	}
 	aeon_dbg("FINISH: aeon_iget");
-	aeon_dbg("%s: CONFIRM %lu\n", __func__, root_i->i_ino);
+	aeon_dbg("%s: root_i ino - %lu\n", __func__, root_i->i_ino);
 
 	aeon_dbg("START: d_make_root\n");
 	sb->s_root = d_make_root(root_i);
 	if (!sb->s_root) {
 		ret = -ENOMEM;
-		goto out2;
+		goto out1;
 	}
 	aeon_dbg("FINISH: d_make_root\n");
 		/*
@@ -338,11 +442,10 @@ static int aeon_fill_super(struct super_block *sb, void *data, int silent)
 	aeon_root_check(sb, root_pi);
 	*/
 
+	aeon_dbg("%s:FINISH\n", __func__);
+
 	return 0;
 
-out2:
-	aeon_dbg("%s: free zeroed_page\n", __func__);
-	kfree(sbi->zeroed_page);
 out1:
 	aeon_dbg("%s: free inode_maps\n", __func__);
 	kfree(sbi->inode_maps);
@@ -371,6 +474,8 @@ static int __init init_aeon_fs(void)
 {
 	int err;
 
+	aeon_dbg("---HELLO AEON---");
+
 	err = init_inodecache();
 	if (err)
 		goto out1;
@@ -388,10 +493,11 @@ out1:
 
 static void __exit exit_aeon_fs(void)
 {
+	aeon_dbg("---GOOD BYE AEON---");
 	unregister_filesystem(&aeon_fs_type);
 	//remove_proc_entry(proc_dirname, NULL);
 	destroy_inodecache();
-	//destroy_rangenode_cache();
+	destroy_rangenode_cache();
 }
 
 MODULE_AUTHOR("Fumiya Shigemitsu");

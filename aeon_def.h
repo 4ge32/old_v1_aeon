@@ -1,5 +1,5 @@
-#ifndef _LINUX_S2FS_FS_H
-#define _LINUX_S2FS_FS_H
+#ifndef _LINUX_AEON_FS_H
+#define _LINUX_AEON_FS_H
 
 #include <linux/types.h>
 #include <linux/magic.h>
@@ -14,6 +14,19 @@
 #define CACHELINE_MASK  (~(CACHELINE_SIZE - 1))
 #define CACHELINE_ALIGN(addr) (((addr)+CACHELINE_SIZE-1) & CACHELINE_MASK)
 
+/*
+ * Mount flags
+ */
+#define AEON_MOUNT_PROTECT      0x000001    /* wprotect CR0.WP */
+#define AEON_MOUNT_XATTR_USER   0x000002    /* Extended user attributes */
+#define AEON_MOUNT_POSIX_ACL    0x000004    /* POSIX Access Control Lists */
+#define AEON_MOUNT_DAX          0x000008    /* Direct Access */
+#define AEON_MOUNT_ERRORS_CONT  0x000010    /* Continue on errors */
+#define AEON_MOUNT_ERRORS_RO    0x000020    /* Remount fs ro on errors */
+#define AEON_MOUNT_ERRORS_PANIC 0x000040    /* Panic on errors */
+#define AEON_MOUNT_HUGEMMAP     0x000080    /* Huge mappings with mmap */
+#define AEON_MOUNT_HUGEIOREMAP  0x000100    /* Huge mappings with ioremap */
+#define AEON_MOUNT_FORMAT       0x000200    /* was FS formatted on mount? */
 
 static inline bool arch_has_clwb(void)
 {
@@ -64,7 +77,7 @@ static inline void aeon_flush_buffer(void *buf, uint32_t len, bool fence)
 }
 
 /*
- * Structure of an inode in NOVA.
+ * Structure of an inode in AEON.
  */
 struct aeon_inode {
 	/* first 40 bytes */

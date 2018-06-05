@@ -1,4 +1,8 @@
+#ifndef __AEON_H
+#define __AEON_H
+
 #include "aeon_def.h"
+#include <linux/uaccess.h>
 
 /*
  * Debug code
@@ -9,11 +13,16 @@
 #endif
 
 /* #define aeon_dbg(s, args...)         pr_debug(s, ## args) */
+extern void aeon_err_msg(struct super_block *, const char *, ...);
 #define aeon_dbg(s, args ...)           pr_info(s, ## args)
 #define aeon_dbg1(s, args ...)
+#define aeon_err(sb, s, args ...)       aeon_err_msg(sb, s, ## args)
 #define aeon_warn(s, args ...)          pr_warning(s, ## args)
 #define aeon_info(s, args ...)          pr_info(s, ## args)
 
+#define set_opt(o, opt)		(o |= AEON_MOUNT_ ## opt)
+
+extern int wprotect;
 
 struct aeon_file_write_entry {
 	/* ret of find_nvmm_block, the lowest byte is entry type */
@@ -26,63 +35,6 @@ struct aeon_file_write_entry {
 	__le32	padding;
 	__le64	size;
 } __attribute((__packed__));
-
-struct aeon_inode_info_header {
-	/* Map from file offsets to write log entries. */
-	struct radix_tree_root tree;
-	struct rb_root rb_tree;		/* RB tree for directory */
-	struct rb_root vma_tree;	/* Write vmas */
-	struct list_head list;		/* SB list of mmap sih */
-	int num_vmas;
-	unsigned short i_mode;		/* Dir or file? */
-	unsigned int i_flags;
-	unsigned long log_pages;	/* Num of log pages */
-	unsigned long i_size;
-	unsigned long i_blocks;
-	unsigned long ino;
-	unsigned long pi_addr;
-	unsigned long alter_pi_addr;
-	unsigned long valid_entries;	/* For thorough GC */
-	unsigned long num_entries;	/* For thorough GC */
-	u64 last_setattr;		/* Last setattr entry */
-	u64 last_link_change;		/* Last link change entry */
-	u64 last_dentry;		/* Last updated dentry */
-	u64 trans_id;			/* Transaction ID */
-	u64 log_head;			/* Log head pointer */
-	u64 log_tail;			/* Log tail pointer */
-	u64 alter_log_head;		/* Alternate log head pointer */
-	u64 alter_log_tail;		/* Alternate log tail pointer */
-	u8  i_blk_type;
-};
-
-struct aeon_inode_info {
-	struct aeon_inode_info_header header;
-	struct inode vfs_inode;
-};
-
-struct free_list {
-	spinlock_t s_lock;
-	struct rb_root	block_free_tree;
-	struct aeon_range_node *first_node;
-	unsigned long	block_start;
-	unsigned long	block_end;
-	unsigned long	num_free_blocks;
-	unsigned long	num_blocknode;
-
-	int             index;
-
-	/* Statistics */
-	unsigned long	alloc_log_count;
-	unsigned long	alloc_data_count;
-	unsigned long	free_log_count;
-	unsigned long	free_data_count;
-	unsigned long	alloc_log_pages;
-	unsigned long	alloc_data_pages;
-	unsigned long	freed_log_pages;
-	unsigned long	freed_data_pages;
-
-	u64		padding[8];	/* Cache line break */
-};
 
 /*
  * The first block contains super blocks and reserved inodes;
@@ -100,16 +52,15 @@ struct inode_map {
 };
 
 /*
- * NOVA super-block data in memory
+ * AEON super-block data in memory
  */
 struct aeon_sb_info {
 	struct super_block *sb;
-	struct aeon_super_block *aeon_sb;
-	struct block_device *s_bdev;
+	struct aeon_super_block *aeon_sb; struct block_device *s_bdev;
 	struct dax_device *s_dax_dev;
 
 	/*
-	 * base physical and virtual address of NOVA (which is also
+	 * base physical and virtual address of AEON (which is also
 	 * the pointer to the super block)
 	 */
 	phys_addr_t	phys_addr;
@@ -160,7 +111,7 @@ struct aeon_sb_info {
 
 	/* Shared free block list */
 	unsigned long per_list_blocks;
-	struct free_list shared_free_list;
+	//struct free_list shared_free_list;
 };
 
 struct aeon_range_node {
@@ -185,11 +136,10 @@ static inline struct aeon_sb_info *AEON_SB(struct super_block *sb)
 	return sb->s_fs_info;
 }
 
-static inline struct aeon_inode_info *AEON_I(struct inode *inode)
-{
-	return container_of(inode, struct aeon_inode_info, vfs_inode);
-}
 
+/*
+ * Get the persistent memory's address
+ */
 static inline struct aeon_super_block *aeon_get_super(struct super_block *sb)
 {
 	struct aeon_sb_info *sbi = AEON_SB(sb);
@@ -222,25 +172,19 @@ static inline int aeon_get_reference(struct super_block *sb, u64 block,
 	return rc;
 }
 
-/* balloc.c  */
-enum node_type {
-	NODE_BLOCK = 1,
-	NODE_INODE,
-	NODE_DIR,
-};
-
-int aeon_alloc_block_free_lists(struct super_block *);
-void aeon_init_blockmap(struct super_block *, int);
-static inline struct free_list *aeon_get_free_list(struct super_block *sb, int cpu)
+static inline int memcpy_to_pmem_nocache(void *dst, const void *src, unsigned int size)
 {
-	struct aeon_sb_info *sbi = AEON_SB(sb);
+	int ret;
 
-	return &sbi->free_lists[cpu];
+	ret = __copy_from_user_inatomic_nocache(dst, src, size);
+
+	return ret;
 }
 
+
 /* super.h */
-#define NOVA_ROOT_INO		(1)
-#define NOVA_INODETABLE_INO	(2)	/* Fake inode associated with inode
+#define AEON_ROOT_INO		(1)
+#define AEON_INODETABLE_INO	(2)	/* Fake inode associated with inode
 					 * stroage.  We need this because our
 					 * allocator requires inode to be
 					 * associated with each allocation.
@@ -253,55 +197,8 @@ static inline struct free_list *aeon_get_free_list(struct super_block *sb, int c
 struct aeon_range_node *aeon_alloc_inode_node(struct super_block *);
 
 
-/* inode.h */
-static inline struct aeon_inode *aeon_get_inode(struct super_block *sb,
-	struct inode *inode)
-{
-	struct aeon_inode_info *si = AEON_I(inode);
-	struct aeon_inode_info_header *sih = &si->header;
-	struct aeon_inode fake_pi;
-	void *addr;
-	int rc;
-
-	addr = aeon_get_block(sb, sih->pi_addr);
-	rc = memcpy_mcsafe(&fake_pi, addr, sizeof(struct aeon_inode));
-	if (rc)
-		return NULL;
-
-	return (struct aeon_inode *)addr;
-}
-
-static inline u64 aeon_get_addr_off(struct aeon_sb_info *sbi) {
-	return (u64)sbi->virt_addr;
-}
-
-static inline u64 aeon_get_reserved_inode_addr(struct super_block *sb, u64 inode_number) {
-	struct aeon_sb_info *sbi = AEON_SB(sb);
-
-	aeon_dbg("%s : 0x%lx\n", __func__, (unsigned long)aeon_get_addr_off(sbi));
-	return aeon_get_addr_off(sbi) + inode_number * AEON_INODE_SIZE;
-}
-
-static inline struct aeon_inode *aeon_get_reserved_inode(struct super_block *sb, u64 inode_number)
-{
-	//struct aeon_sb_info *sbi = AEON_SB(sb);
-	u64 addr;
-
-	addr = aeon_get_reserved_inode_addr(sb, inode_number);
-	aeon_dbg("%s : 0x%lx\n", __func__, (unsigned long)addr);
-
-	return (struct aeon_inode *)addr;
-}
-
-static inline struct aeon_inode *aeon_get_inode_by_ino(struct super_block *sb, u64 ino)
-{
-	if (ino == 0)
-		return NULL;
-	return aeon_get_reserved_inode(sb, ino);
-}
-int aeon_init_inode_inuse_list(struct super_block *);
-int aeon_init_inode_table(struct super_block *);
-struct inode *aeon_iget(struct super_block *, unsigned long);
 
 /* file.h  */
 extern const struct file_operations aeon_dax_file_operations;
+
+#endif
