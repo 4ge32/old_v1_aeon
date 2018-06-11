@@ -157,18 +157,18 @@ static inline void *aeon_get_block(struct super_block *sb, u64 block)
 	struct aeon_super_block *ps = aeon_get_super(sb);
 
 	//return block ? ((void *)ps + block) : NULL;
-	return block ? ((void *)ps) : NULL;
+	return block ? (void *)ps : NULL;
 }
 
 static inline int aeon_get_reference(struct super_block *sb, u64 block,
 		void *dram, void **nvmm, size_t size)
 {
-	int rc;
+	int rc = 0;
 
 	*nvmm = aeon_get_block(sb, block);
 	aeon_dbg("%s: nvmm 0x%lx", __func__, (unsigned long)*nvmm);
-	aeon_dbg("%s: dram 0x%lx", __func__, (unsigned long)dram);
-	rc = memcpy_mcsafe(dram, *nvmm, size);
+	//aeon_dbg("%s: dram 0x%lx", __func__, (unsigned long)dram);
+	//rc = memcpy_mcsafe(dram, *nvmm, size);
 	return rc;
 }
 
@@ -195,7 +195,7 @@ static inline int memcpy_to_pmem_nocache(void *dst, const void *src, unsigned in
 #define AEON_NORMAL_INODE_START (5)
 
 struct aeon_range_node *aeon_alloc_inode_node(struct super_block *);
-
+void aeon_free_inode_node(struct aeon_range_node *);
 
 
 /* file.h  */

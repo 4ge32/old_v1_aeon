@@ -168,6 +168,17 @@ static struct super_operations aeon_sops = {
 	//.evict_inode   = aeon_evict_inode,
 };
 
+void aeon_free_range_node(struct aeon_range_node *node)
+{
+	kmem_cache_free(aeon_range_node_cachep, node);
+}
+
+
+void aeon_free_inode_node(struct aeon_range_node *node)
+{
+	aeon_free_range_node(node);
+}
+
 enum {
 	Opt_init, Opt_dax
 };
@@ -279,6 +290,8 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 	sbi->blocksize = blocksize = AEON_DEF_BLOCK_SIZE_4K;
 	aeon_set_blocksize(sb, sbi->blocksize);
 
+	sbi->mode = (0755);
+
 	aeon_sb = aeon_get_super(sb);
 	//sbi->aeon_sb = aeon_sb;
 
@@ -312,6 +325,7 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 
 	aeon_dbg("%s: %d\n", __func__, i++);
 	root_i = aeon_get_inode_by_ino(sb, AEON_ROOT_INO);
+	aeon_dbg("%s: root_i address %p\n", __func__, root_i);
 	root_i->i_mode = cpu_to_le16(sbi->mode | S_IFDIR);
 	root_i->i_uid = cpu_to_le32(from_kuid(&init_user_ns, sbi->uid));
 	root_i->i_gid = cpu_to_le32(from_kgid(&init_user_ns, sbi->gid));
@@ -320,7 +334,6 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 		cpu_to_le32(get_seconds());
 	root_i->aeon_ino = cpu_to_le64(AEON_ROOT_INO);
 
-	aeon_info("%s: START\n", __func__);
 
 	return root_i;
 }
@@ -399,13 +412,14 @@ static int aeon_fill_super(struct super_block *sb, void *data, int silent)
 		}
 		aeon_dbg("FINISH: aeon_init");
 		goto setup_sb;
+	} else {
+		super = aeon_get_super(sb);
+		root_pi = aeon_get_inode_by_ino(sb, AEON_ROOT_INO);
 	}
 
 	blocksize = le32_to_cpu(sbi->aeon_sb->s_blocksize);
 	aeon_set_blocksize(sb, blocksize);
 
-	root_pi = aeon_get_inode_by_ino(sb, AEON_ROOT_INO);
-	super = aeon_get_super(sb);
 	aeon_dbg("magic - %x\n", le32_to_cpu(super->s_magic));
 
 	aeon_root_check(sb, root_pi);
@@ -424,7 +438,9 @@ setup_sb:
 		goto out1;
 	}
 	aeon_dbg("FINISH: aeon_iget");
+	aeon_dbg("%s: root_i address %p\n", __func__, root_i);
 	aeon_dbg("%s: root_i ino - %lu\n", __func__, root_i->i_ino);
+	aeon_dbg("%s: root_pi ino - %u\n", __func__, le32_to_cpu(root_pi->aeon_ino));
 
 	aeon_dbg("START: d_make_root\n");
 	sb->s_root = d_make_root(root_i);
@@ -433,14 +449,6 @@ setup_sb:
 		goto out1;
 	}
 	aeon_dbg("FINISH: d_make_root\n");
-		/*
-	blocksize = le32_to_cpu(sbi->aeon_sb->s_blocksize);
-	aeon_set_blocksize(sb, blocksize);
-
-	root_pi = aeon_get_inode_by_ino(sb, AEON_ROOT_INO);
-
-	aeon_root_check(sb, root_pi);
-	*/
 
 	aeon_dbg("%s:FINISH\n", __func__);
 

@@ -2,7 +2,7 @@
 
 FS="aeon"
 DEV=/dev/pmem0
-MOUNT_POINT=/mnt
+MOUNT_POINT=mnt
 
 run () {
   sudo umount $MOUNT_POINT
@@ -10,13 +10,13 @@ run () {
   make
   sudo insmod $FS.ko
   sudo mount -t $FS -o init $DEV $MOUNT_POINT
-  dmesg
+  dmesg > err.log
 }
 
 rrun() {
   sudo umount $MOUNT_POINT
   sudo mount -t $FS $DEV $MOUNT_POINT
-  dmesg
+  dmesg > err.log
 }
 
 clean () {

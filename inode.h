@@ -1,7 +1,14 @@
 #ifndef __INODE_H_
 #define __INODE_H_
 
-//#include "aeon.h"
+#include "aeon.h"
+
+enum aeon_new_inode_type {
+	TYPE_CREATE = 0,
+	TYPE_MKNOD,
+	TYPE_SYMLINK,
+	TYPE_MKDIR
+};
 
 /* inode.h */
 struct aeon_inode_info_header {
@@ -42,32 +49,15 @@ static inline struct aeon_inode_info *AEON_I(struct inode *inode)
 	return container_of(inode, struct aeon_inode_info, vfs_inode);
 }
 
-
-static inline struct aeon_inode *aeon_get_inode(struct super_block *sb,
-	struct inode *inode)
-{
-	struct aeon_inode_info *si = AEON_I(inode);
-	struct aeon_inode_info_header *sih = &si->header;
-	struct aeon_inode fake_pi;
-	void *addr;
-	int rc;
-
-	addr = aeon_get_block(sb, sih->pi_addr);
-	rc = memcpy_mcsafe(&fake_pi, addr, sizeof(struct aeon_inode));
-	if (rc)
-		return NULL;
-
-	return (struct aeon_inode *)addr;
-}
-
 static inline u64 aeon_get_addr_off(struct aeon_sb_info *sbi) {
-	return (u64)sbi->virt_addr;
+	return (u64)(sbi->virt_addr + AEON_SB_SIZE);
 }
 
 static inline u64 aeon_get_reserved_inode_addr(struct super_block *sb, u64 inode_number) {
 	struct aeon_sb_info *sbi = AEON_SB(sb);
 
-	aeon_dbg("%s : 0x%lx\n", __func__, (unsigned long)aeon_get_addr_off(sbi));
+	aeon_dbg("%s : 0x%llx\n", __func__, ((unsigned long)aeon_get_addr_off(sbi)
+				+ inode_number * AEON_INODE_SIZE));
 	return aeon_get_addr_off(sbi) + inode_number * AEON_INODE_SIZE;
 }
 
@@ -89,8 +79,31 @@ static inline struct aeon_inode *aeon_get_inode_by_ino(struct super_block *sb, u
 	return aeon_get_reserved_inode(sb, ino);
 }
 
+static inline struct aeon_inode *aeon_get_inode(struct super_block *sb, struct inode *inode)
+{
+	struct aeon_inode_info *si = AEON_I(inode);
+	struct aeon_inode_info_header *sih = &si->header;
+	struct aeon_inode fake_pi;
+	void *addr;
+	int rc;
+
+	addr = aeon_get_block(sb, sih->pi_addr);
+	rc = memcpy_mcsafe(&fake_pi, addr, sizeof(struct aeon_inode));
+	if (rc)
+		return NULL;
+
+	return (struct aeon_inode *)addr;
+}
+
+extern const struct address_space_operations aeon_aops_dax;
 int aeon_init_inode_inuse_list(struct super_block *);
 int aeon_init_inode_table(struct super_block *);
 struct inode *aeon_iget(struct super_block *, unsigned long);
+u64 aeon_new_aeon_inode(struct super_block *, u64 *);
+int aeon_get_inode_address(struct super_block *, u64 , int version, u64 *,
+			   int, int);
+struct inode *aeon_new_vfs_inode(enum aeon_new_inode_type type,
+	struct inode *dir, u64 pi_addr, u64 ino, umode_t mode,
+	size_t size, dev_t rdev, const struct qstr *qstr);
 
 #endif
