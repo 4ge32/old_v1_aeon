@@ -15,8 +15,11 @@ struct inode *aeon_new_vfs_inode(enum aeon_new_inode_type type,
 	struct inode *inode;
 	struct aeon_inode *diri;
 	struct aeon_inode *pi;
+	struct aeon_inode_info *si;
+	struct aeon_inode_info_header *sih = NULL;
 	int err;
 
+	aeon_dbg("%s: START\n", __func__);
 	sb = dir->i_sb;
 	sbi = (struct aeon_sb_info *)sb->s_fs_info;
 	inode = new_inode(sb);
@@ -25,19 +28,22 @@ struct inode *aeon_new_vfs_inode(enum aeon_new_inode_type type,
 		goto out;
 	}
 
+	aeon_dbg("%s: new inode\n", __func__);
 	inode_init_owner(inode, dir, mode);
 	inode->i_blocks = inode->i_size = 0;
 	inode->i_mtime = inode->i_atime = inode->i_ctime = current_time(inode);
 	//inode->i_generation = atomic_add_return(1, &sbi->next_generation);
 	inode->i_size = size;
 
-	diri = aeon_get_inode(sb, dir);
-	if (!diri) {
-		err = -EACCES;
-		goto out1;
-	}
+	//diri = aeon_get_inode(sb, dir);
+	//if (diri == NULL) {
+	//	aeon_err(sb, "%s ERROR\n", __func__);
+	//	err = -EACCES;
+	//	goto out1;
+	//}
+	//aeon_dbg("%s: dir inode - %llu\n", __func__, diri->aeon_ino);
 
-	pi = (struct aeon_inode *)aeon_get_block(sb, pi_addr);
+	//pi = (struct aeon_inode *)aeon_get_block(sb, pi_addr);
 	aeon_dbg("%s: allocating inode %llu @ 0x%llx\n", __func__, ino, pi_addr);
 
 	/* chosen inode is in ino */
@@ -59,6 +65,25 @@ struct inode *aeon_new_vfs_inode(enum aeon_new_inode_type type,
 		aeon_dbg("Unknown new inode type %d\n", type);
 		break;
 	}
+
+	//err = aeon_get_inode_address(sb, ino, 0, &pi_addr, 0, 0);
+	//if (err) {
+	//	aeon_dbg("%s: get inode address failed %d\n", __func__, ret);
+	//	goto out1;
+	//}
+	aeon_dbg("%s: pi_addr 0x%llx\n", __func__, pi_addr);
+	pi = (struct aeon_inode *)pi_addr;
+	pi->i_mode = inode->i_mode;
+	pi->aeon_ino = inode->i_ino;
+
+	si = AEON_I(inode);
+	sih = &si->header;
+	aeon_init_header(sb, sih, inode->i_mode);
+	sih->pi_addr = pi_addr;
+	sih->ino = ino;
+
+	aeon_dbg("%s: FINISH\n", __func__);
+	return inode;
 out1:
 	make_bad_inode(inode);
 	iput(inode);
@@ -168,6 +193,8 @@ inline int aeon_insert_inodetree(struct aeon_sb_info *sbi, struct aeon_range_nod
 
 	tree = &sbi->inode_maps[cpu].inode_inuse_tree;
 	ret = aeon_insert_range_node(tree, new_node, NODE_INODE);
+	if (ret)
+		aeon_dbg("ERROR: %s failed %d\n", __func__, ret);
 
 	return ret;
 }
@@ -181,8 +208,8 @@ int aeon_init_inode_inuse_list(struct super_block *sb)
 	int i;
 	int ret;
 
-	return 0;
 
+	aeon_dbg("%s: START\n", __func__);
 	sbi->s_inodes_used_count = AEON_NORMAL_INODE_START;
 
 	range_high = AEON_NORMAL_INODE_START / sbi->cpus;
@@ -191,15 +218,25 @@ int aeon_init_inode_inuse_list(struct super_block *sb)
 
 	for (i = 0; i < sbi->cpus; i++) {
 		inode_map = &sbi->inode_maps[i];
+		aeon_dbg("%s: alloc_inode_node\n", __func__);
 		range_node = aeon_alloc_inode_node(sb);
 		if (range_node == NULL)
 			return -ENOMEM;
 
 		range_node->range_low = 0;
 		range_node->range_high = range_high;
+		aeon_dbg("%s: insert_inodetree\n", __func__);
 		ret = aeon_insert_inodetree(sbi, range_node, i);
+		if (ret) {
+			aeon_err(sb, "%s failed\n", __func__);
+			aeon_free_inode_node(range_node);
+			return ret;
+		}
+		inode_map->num_range_node_inode = 1;
+		inode_map->first_inode_range = range_node;
 	}
 
+	aeon_dbg("%s: FINISH\n", __func__);
 	return 0;
 }
 
@@ -211,7 +248,7 @@ int aeon_init_inode_table(struct super_block *sb)
 int aeon_get_inode_address(struct super_block *sb, u64 ino, int version, u64 *pi_addr,
 			   int extenable, int extend_alternate)
 {
-	if (ino < AEON_NORMAL_INODE_START)
+	//if (ino < AEON_NORMAL_INODE_START)
 		*pi_addr = aeon_get_reserved_inode_addr(sb, ino);
 	return 0;
 }
@@ -250,12 +287,10 @@ static int aeon_read_inode(struct super_block *sb, struct inode *inode, u64 pi_a
 	ino = le32_to_cpu(pi->aeon_ino);
 	aeon_dbg("%s: ino - %lu\n", __func__, ino);
 
-	/*
 	if (inode->i_mode == 0 || pi->deleted == 1) {
 		ret = -ESTALE;
 		goto bad_inode;
 	}
-	*/
 
 	inode->i_blocks = aih->i_blocks;
 	//inode->i_mapping->a_ops = &aeon_aops_dax;
@@ -267,7 +302,7 @@ static int aeon_read_inode(struct super_block *sb, struct inode *inode, u64 pi_a
 		break;
 	case S_IFDIR:
 		inode->i_op = &aeon_dir_inode_operations;
-		//inode->i_fop = &aeon_dir_operations;
+		inode->i_fop = &aeon_dir_operations;
 		break;
 	//case S_IFLNK:
 	//	inode->i_op = &aeon_symlink_inode_operations;
@@ -297,6 +332,8 @@ bad_inode:
 int aeon_rebuild_inode(struct super_block *sb, struct aeon_inode_info *si,
 		       u64 ino, u64 pi_addr, int rebuild_dir)
 {
+	struct aeon_inode_info_header *sih  = &si->header;
+	aeon_init_header(sb, sih, 0755);
 	return 0;
 }
 

@@ -34,6 +34,8 @@ enum node_type {
 int aeon_alloc_block_free_lists(struct super_block *);
 void aeon_init_blockmap(struct super_block *);
 int aeon_insert_range_node(struct rb_root *, struct aeon_range_node *, enum node_type);
+int aeon_find_range_node(struct rb_root *tree, unsigned long key,
+	enum node_type type, struct aeon_range_node **ret_node);
 static inline struct free_list *aeon_get_free_list(struct super_block *sb, int cpu)
 {
 	struct aeon_sb_info *sbi = AEON_SB(sb);

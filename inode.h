@@ -89,11 +89,40 @@ static inline struct aeon_inode *aeon_get_inode(struct super_block *sb, struct i
 
 	addr = aeon_get_block(sb, sih->pi_addr);
 	rc = memcpy_mcsafe(&fake_pi, addr, sizeof(struct aeon_inode));
-	if (rc)
+	if (rc) {
+		aeon_err(sb, "%s: ERROR\n", __func__);
 		return NULL;
+	}
 
 	return (struct aeon_inode *)addr;
 }
+
+static inline void aeon_init_header(struct super_block *sb, struct aeon_inode_info_header *sih, u16 i_mode)
+{
+	sih->i_size = 0;
+	sih->ino = 0;
+	sih->i_blocks = 0;
+	sih->pi_addr = 0;
+	sih->alter_pi_addr = 0;
+	INIT_RADIX_TREE(&sih->tree, GFP_ATOMIC);
+	sih->rb_tree = RB_ROOT;
+	sih->vma_tree = RB_ROOT;
+	sih->num_vmas = 0;
+	INIT_LIST_HEAD(&sih->list);
+	sih->i_mode = i_mode;
+	sih->i_flags = 0;
+	sih->valid_entries = 0;
+	sih->num_entries = 0;
+	sih->last_setattr = 0;
+	sih->last_link_change = 0;
+	sih->last_dentry = 0;
+	sih->trans_id = 0;
+	sih->log_head = 0;
+	sih->log_tail = 0;
+	sih->alter_log_head = 0;
+	sih->alter_log_tail = 0;
+}
+
 
 extern const struct address_space_operations aeon_aops_dax;
 int aeon_init_inode_inuse_list(struct super_block *);

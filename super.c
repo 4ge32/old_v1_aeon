@@ -155,6 +155,17 @@ static void destroy_inodecache(void)
 	kmem_cache_destroy(aeon_inode_cachep);
 }
 
+static int __init init_rangenode_cache(void)
+{
+	aeon_range_node_cachep = kmem_cache_create("aeon_range_node_cache",
+					sizeof(struct aeon_range_node),
+					0, (SLAB_RECLAIM_ACCOUNT |
+					SLAB_MEM_SPREAD), NULL);
+	if (aeon_range_node_cachep == NULL)
+		return -ENOMEM;
+	return 0;
+}
+
 static void destroy_rangenode_cache(void)
 {
 	kmem_cache_destroy(aeon_range_node_cachep);
@@ -337,7 +348,6 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 
 	return root_i;
 }
-
 static int aeon_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct aeon_inode *root_pi;
@@ -486,6 +496,10 @@ static int __init init_aeon_fs(void)
 
 	err = init_inodecache();
 	if (err)
+		goto out2;
+
+	err = init_rangenode_cache();
+	if (err)
 		goto out1;
 
 	err = register_filesystem(&aeon_fs_type);
@@ -494,8 +508,10 @@ static int __init init_aeon_fs(void)
 
 	return 0;
 out:
-	destroy_inodecache();
+	destroy_rangenode_cache();
 out1:
+	destroy_inodecache();
+out2:
 	return err;
 }
 

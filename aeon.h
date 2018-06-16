@@ -22,6 +22,8 @@ extern void aeon_err_msg(struct super_block *, const char *, ...);
 
 #define set_opt(o, opt)		(o |= AEON_MOUNT_ ## opt)
 
+#define	READDIR_END			(ULONG_MAX)
+
 extern int wprotect;
 
 struct aeon_file_write_entry {
@@ -156,8 +158,10 @@ static inline void *aeon_get_block(struct super_block *sb, u64 block)
 {
 	struct aeon_super_block *ps = aeon_get_super(sb);
 
+	aeon_dbg("%s : 0x%llx\n", __func__, block);
+
 	//return block ? ((void *)ps + block) : NULL;
-	return block ? (void *)ps : NULL;
+	return block ? ((void *)ps + block) : NULL;
 }
 
 static inline int aeon_get_reference(struct super_block *sb, u64 block,
@@ -196,9 +200,24 @@ static inline int memcpy_to_pmem_nocache(void *dst, const void *src, unsigned in
 
 struct aeon_range_node *aeon_alloc_inode_node(struct super_block *);
 void aeon_free_inode_node(struct aeon_range_node *);
+struct aeon_range_node *aeon_alloc_range_node(struct super_block *sb);
+void aeon_free_range_node(struct aeon_range_node *node);
 
+// BKDR String Hash Function
+static inline unsigned long BKDRHash(const char *str, int length)
+{
+	unsigned int seed = 131; // 31 131 1313 13131 131313 etc..
+	unsigned long hash = 0;
+	int i;
+
+	for (i = 0; i < length; i++)
+		hash = hash * seed + (*str++);
+
+	return hash;
+}
 
 /* file.h  */
 extern const struct file_operations aeon_dax_file_operations;
-
+extern const struct file_operations aeon_dir_operations;
+int aeon_add_dentry(struct dentry *dentry, u64 ino, int inc_link);
 #endif

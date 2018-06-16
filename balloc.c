@@ -69,16 +69,48 @@ static inline int aeon_rbtree_compare_rangenode(struct aeon_range_node *curr, un
 	return 0;
 }
 
+int aeon_find_range_node(struct rb_root *tree, unsigned long key,
+	enum node_type type, struct aeon_range_node **ret_node)
+{
+	struct aeon_range_node *curr = NULL;
+	struct rb_node *temp;
+	int compVal;
+	int ret = 0;
+
+	temp = tree->rb_node;
+
+	while (temp) {
+		curr = container_of(temp, struct aeon_range_node, node);
+		compVal = aeon_rbtree_compare_rangenode(curr, key, type);
+
+		if (compVal == -1) {
+			temp = temp->rb_left;
+		} else if (compVal == 1) {
+			temp = temp->rb_right;
+		} else {
+			ret = 1;
+			break;
+		}
+	}
+
+	*ret_node = curr;
+	return ret;
+}
+
 int aeon_insert_range_node(struct rb_root *tree, struct aeon_range_node *new_node, enum node_type type)
 {
 	struct aeon_range_node *curr;
 	struct rb_node **temp, *parent;
 	int compVal;
 
+	aeon_dbg("%s: START\n", __func__);
+
 	temp = &(tree->rb_node);
 	parent = NULL;
 
 	while (*temp) {
+		aeon_dbg("%s: MIDDLE\n", __func__);
+
 		curr = container_of(*temp, struct aeon_range_node, node);
 		compVal = aeon_rbtree_compare_rangenode(curr, new_node->range_low, type);
 
@@ -102,5 +134,6 @@ int aeon_insert_range_node(struct rb_root *tree, struct aeon_range_node *new_nod
 	rb_link_node(&new_node->node, parent, temp);
 	rb_insert_color(&new_node->node, tree);
 
+	aeon_dbg("%s: FINISH\n", __func__);
 	return 0;
 }

@@ -100,7 +100,7 @@ struct aeon_inode {
 	__le32	i_gid;		 /* Group Id */
 	__le32	i_generation;	 /* File version (for NFS) */
 	__le32	i_create_time;	 /* Create time */
-	__le64	aeon_ino;	 /* nova inode number */
+	__le64	aeon_ino;	 /* aeon inode number */
 
 	__le64	log_head;	 /* Log head pointer */
 	__le64	log_tail;	 /* Log tail pointer */
@@ -145,6 +145,24 @@ struct aeon_super_block {
 	__le32		s_wtime;            /* write time */
 	/* fields for fast mount support. Always keep them together */
 	__le64		s_num_free_blocks;
+} __attribute((__packed__));
+
+#define AEON_NAME_LEN 512
+
+struct aeon_dentry {
+	u8	entry_type;
+	u8	name_len;		/* length of the dentry name */
+	u8	reassigned;		/* Currently deleted */
+	u8	invalid;		/* Invalid now? */
+	__le16	de_len;			/* length of this dentry */
+	__le16	links_count;
+	__le32	mtime;			/* For both mtime and ctime */
+	__le32	csum;			/* entry checksum */
+	__le64	ino;			/* inode no pointed to by this entry */
+	__le64	padding;
+	__le64	epoch_id;
+	__le64	trans_id;
+	char	name[AEON_NAME_LEN + 1];	/* File name */
 } __attribute((__packed__));
 
 #define AEON_ROOT_INO		(1)
