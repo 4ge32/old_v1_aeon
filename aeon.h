@@ -22,7 +22,8 @@ extern void aeon_err_msg(struct super_block *, const char *, ...);
 
 #define set_opt(o, opt)		(o |= AEON_MOUNT_ ## opt)
 
-#define	READDIR_END			(ULONG_MAX)
+#define	READDIR_END		(ULONG_MAX)
+#define	ANY_CPU			(65536)
 
 extern int wprotect;
 
@@ -203,6 +204,13 @@ void aeon_free_inode_node(struct aeon_range_node *);
 struct aeon_range_node *aeon_alloc_range_node(struct super_block *sb);
 void aeon_free_range_node(struct aeon_range_node *node);
 
+static inline int aeon_get_cpuid(struct super_block *sb)
+{
+	struct aeon_sb_info *sbi = AEON_SB(sb);
+
+	return smp_processor_id() % sbi->cpus;
+}
+
 // BKDR String Hash Function
 static inline unsigned long BKDRHash(const char *str, int length)
 {
@@ -216,8 +224,16 @@ static inline unsigned long BKDRHash(const char *str, int length)
 	return hash;
 }
 
+static inline u64
+aeon_get_block_off(struct super_block *sb, unsigned long blocknr,
+		    unsigned short btype)
+{
+	return (u64)blocknr << PAGE_SHIFT;
+}
+
 /* file.h  */
 extern const struct file_operations aeon_dax_file_operations;
 extern const struct file_operations aeon_dir_operations;
+extern const struct iomap_ops aeon_iomap_ops;
 int aeon_add_dentry(struct dentry *dentry, u64 ino, int inc_link);
 #endif

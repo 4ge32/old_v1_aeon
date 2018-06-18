@@ -8,6 +8,7 @@ run () {
   sudo umount $MOUNT_POINT
   sudo rmmod $FS
   make
+  sync
   sudo insmod $FS.ko
   sudo mount -t $FS -o init $DEV $MOUNT_POINT
   dmesg > err.log

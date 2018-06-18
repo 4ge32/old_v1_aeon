@@ -55,6 +55,13 @@ static inline void aeon_memunlock_range(struct super_block *sb, void *p,
 		__aeon_memunlock_range(p, len);
 }
 
+static inline void aeon_memlock_range(struct super_block *sb, void *p,
+				       unsigned long len)
+{
+	if (aeon_is_protected(sb))
+		__aeon_memlock_range(p, len);
+}
+
 static inline void aeon_memlock_super(struct super_block *sb)
 {
 	struct aeon_super_block *ps = aeon_get_super(sb);

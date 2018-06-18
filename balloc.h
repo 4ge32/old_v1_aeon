@@ -1,25 +1,43 @@
 #ifndef __BALLOC_H
 #define __BALLOC_H
 
+#include "inode.h"
+
 struct free_list {
 	spinlock_t s_lock;
 	struct rb_root	block_free_tree;
-	struct aeon_range_node *first_node;
+	struct aeon_range_node *first_node; // lowest address free range
+	struct aeon_range_node *last_node; // highest address free range
+
+	int		index; // Which CPU do I belong to?
+
+	/* Where are the data checksum blocks */
+	unsigned long	csum_start;
+	unsigned long	replica_csum_start;
+	unsigned long	num_csum_blocks;
+
+	/* Where are the data parity blocks */
+	unsigned long	parity_start;
+	unsigned long	replica_parity_start;
+	unsigned long	num_parity_blocks;
+
+	/* Start and end of allocatable range, inclusive. Excludes csum and
+	 * parity blocks.
+	 */
 	unsigned long	block_start;
 	unsigned long	block_end;
+
 	unsigned long	num_free_blocks;
+
+	/* How many nodes in the rb tree? */
 	unsigned long	num_blocknode;
 
-	int             index;
+	u32		csum;		/* Protect integrity */
 
 	/* Statistics */
-	unsigned long	alloc_log_count;
 	unsigned long	alloc_data_count;
-	unsigned long	free_log_count;
 	unsigned long	free_data_count;
-	unsigned long	alloc_log_pages;
 	unsigned long	alloc_data_pages;
-	unsigned long	freed_log_pages;
 	unsigned long	freed_data_pages;
 
 	u64		padding[8];	/* Cache line break */
@@ -42,5 +60,7 @@ static inline struct free_list *aeon_get_free_list(struct super_block *sb, int c
 
 	return &sbi->free_lists[cpu];
 }
-
+int aeon_new_data_blocks(struct super_block *sb, struct aeon_inode_info_header *sih, unsigned long *blocknr, unsigned long start_blk, unsigned int num, int cpu);
+int aeon_free_data_blocks(struct super_block *sb,
+	struct aeon_inode_info_header *sih, unsigned long blocknr, int num);
 #endif

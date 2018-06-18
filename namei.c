@@ -71,9 +71,7 @@ static ino_t aeon_inode_by_name(struct inode *dir, struct qstr *entry)
 	struct super_block *sb = dir->i_sb;
 	struct aeon_dentry *direntry;
 
-	aeon_dbg("%s", __func__);
 	direntry = aeon_find_dentry(sb, NULL, dir, entry->name, entry->len);
-	aeon_dbg("%s", __func__);
 
 	if (direntry == NULL)
 		return 0;
@@ -86,9 +84,6 @@ struct dentry *aeon_lookup(struct inode *dir, struct dentry *dentry, unsigned in
 	struct inode *inode = NULL;
 	ino_t ino;
 
-	aeon_dbg("%s: START\n", __func__);
-
-	aeon_dbg("%s: d_name - %s\n", __func__, dentry->d_name.name);
 	ino = aeon_inode_by_name(dir, &dentry->d_name);
 
 	if (ino) {
@@ -102,7 +97,6 @@ struct dentry *aeon_lookup(struct inode *dir, struct dentry *dentry, unsigned in
 		}
 	}
 
-	aeon_dbg("%s: FINISH\n", __func__);
 	return d_splice_alias(inode, dentry);
 }
 

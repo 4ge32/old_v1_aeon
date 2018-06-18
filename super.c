@@ -301,7 +301,7 @@ static struct aeon_inode *aeon_init(struct super_block *sb, unsigned long size)
 	sbi->blocksize = blocksize = AEON_DEF_BLOCK_SIZE_4K;
 	aeon_set_blocksize(sb, sbi->blocksize);
 
-	sbi->mode = (0755);
+	sbi->mode = (0777);
 
 	aeon_sb = aeon_get_super(sb);
 	//sbi->aeon_sb = aeon_sb;

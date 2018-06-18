@@ -270,7 +270,7 @@ static int aeon_read_inode(struct super_block *sb, struct inode *inode, u64 pi_a
 	int i = 0;
 
 	aeon_dbg("%s: %d\n", __func__, i++);
-	aeon_dbg("%s: pi_addr 0x%llu, %d\n", __func__, pi_addr, i++);
+	aeon_dbg("%s: pi_addr 0x%llx, %d\n", __func__, pi_addr, i++);
 	//ret = aeon_get_reference(sb, pi_addr, &fake_pi, (void **)&pi, sizeof(struct aeon_inode));
 	//if (ret) {
 	//	aeon_dbg("%s: read pi 6 0x%llx failed\n", __func__, pi_addr);
