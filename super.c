@@ -184,6 +184,10 @@ void aeon_free_range_node(struct aeon_range_node *node)
 	kmem_cache_free(aeon_range_node_cachep, node);
 }
 
+void aeon_free_dir_node(struct aeon_range_node *node)
+{
+	aeon_free_range_node(node);
+}
 
 void aeon_free_inode_node(struct aeon_range_node *node)
 {

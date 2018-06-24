@@ -30,6 +30,30 @@ int aeon_insert_dir_tree(struct super_block *sb, struct aeon_inode_info_header *
 	return ret;
 }
 
+int aeon_remove_dir_tree(struct super_block *sb, struct aeon_inode_info_header *sih,
+			 const char *name, int namelen)
+{
+	struct aeon_dentry *entry;
+	struct aeon_range_node *ret_node = NULL;
+	unsigned long hash;
+	int found = 0;
+
+	hash = BKDRHash(name, namelen);
+	found = aeon_find_range_node(&sih->rb_tree, hash, NODE_DIR, &ret_node);
+
+	if (found == 0) {
+		aeon_dbg("%s target not found: %s, length %d, "
+				"hash %lu\n", __func__, name, namelen, hash);
+		return -EINVAL;
+	}
+
+	entry = ret_node->direntry;
+	rb_erase(&ret_node->node, &sih->rb_tree);
+	aeon_free_dir_node(ret_node);
+
+	return 0;
+}
+
 int aeon_add_dentry(struct dentry *dentry, u64 ino, int inc_link)
 {
 	struct inode *dir = dentry->d_parent->d_inode;
@@ -63,6 +87,32 @@ int aeon_add_dentry(struct dentry *dentry, u64 ino, int inc_link)
 	dir->i_mtime = dir->i_ctime = current_time(dir);
 
 	return 0;
+}
+
+int aeon_remove_dentry(struct dentry *dentry, int dec_link, struct aeon_inode *update)
+{
+	struct inode *dir = dentry->d_parent->d_inode;
+	struct super_block *sb = dir->i_sb;
+	struct qstr *entry = &dentry->d_name;
+	struct aeon_inode_info *si = AEON_I(dir);
+	struct aeon_inode_info_header *sih = &si->header;
+	struct aeon_inode *pidir;
+	int ret;
+
+	if (!dentry->d_name.len)
+		return -EINVAL;
+
+	ret = aeon_remove_dir_tree(sb, sih, entry->name, entry->len);
+	if (ret)
+		goto out;
+
+	pidir = aeon_get_inode(sb, dir);
+
+	dir->i_mtime = dir->i_ctime = current_time(dir);
+
+	return 0;
+out:
+	return ret;
 }
 
 static int aeon_readdir(struct file *file, struct dir_context *ctx)

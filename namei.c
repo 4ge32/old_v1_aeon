@@ -100,7 +100,36 @@ struct dentry *aeon_lookup(struct inode *dir, struct dentry *dentry, unsigned in
 	return d_splice_alias(inode, dentry);
 }
 
+static int aeon_unlink(struct inode *dir, struct dentry *dentry)
+{
+	struct inode *inode = dentry->d_inode;
+	struct super_block *sb = dir->i_sb;
+	struct aeon_inode *pidir;
+	struct aeon_inode update_dir;
+	int ret = -ENOMEM;
+
+	pidir = aeon_get_inode(sb, dir);
+
+	aeon_dbg("%s: %s\n", __func__, dentry->d_name.name);
+	aeon_dbg("%s: inode %lu, dir %lu\n", __func__,
+				inode->i_ino, dir->i_ino);
+
+	ret = aeon_remove_dentry(dentry, 0, &update_dir);
+	if (ret)
+		goto out;
+
+	inode->i_ctime = dir->i_ctime;
+
+	if (inode->i_nlink)
+		drop_nlink(inode);
+	return 0;
+out:
+	aeon_err(sb, "%s return %d\n", __func__, ret);
+	return ret;
+}
+
 const struct inode_operations aeon_dir_inode_operations = {
 	.create = aeon_create,
 	.lookup = aeon_lookup,
+	.unlink = aeon_unlink,
 };

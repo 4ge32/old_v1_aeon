@@ -550,3 +550,21 @@ int aeon_new_data_blocks(struct super_block *sb, struct aeon_inode_info_header *
 	return allocated;
 }
 
+
+
+void aeon_destroy_range_node_tree(struct super_block *sb,
+	struct rb_root *tree)
+{
+	struct aeon_range_node *curr;
+	struct rb_node *temp;
+
+	temp = rb_first(tree);
+	while (temp) {
+		curr = container_of(temp, struct aeon_range_node, node);
+		temp = rb_next(temp);
+		rb_erase(&curr->node, tree);
+		aeon_free_range_node(curr);
+	}
+}
+
+

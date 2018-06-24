@@ -56,9 +56,9 @@ struct inode *aeon_new_vfs_inode(enum aeon_new_inode_type type,
 		inode->i_mapping->a_ops = &aeon_aops_dax;
 		break;
 	case TYPE_MKDIR:
-		//inode->i_op = &aeon_dir_inode_operations;
-		//inode->i_fop = &aeon_dir_operations;
-		//inode->i_mapping->a_ops = &aeon_aops_dax;
+		inode->i_op = &aeon_dir_inode_operations;
+		inode->i_fop = &aeon_dir_operations;
+		inode->i_mapping->a_ops = &aeon_aops_dax;
 		set_nlink(inode, 2);
 		break;
 	default:

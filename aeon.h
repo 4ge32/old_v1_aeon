@@ -203,6 +203,7 @@ struct aeon_range_node *aeon_alloc_inode_node(struct super_block *);
 void aeon_free_inode_node(struct aeon_range_node *);
 struct aeon_range_node *aeon_alloc_range_node(struct super_block *sb);
 void aeon_free_range_node(struct aeon_range_node *node);
+void aeon_free_dir_node(struct aeon_range_node *node);
 
 static inline int aeon_get_cpuid(struct super_block *sb)
 {
@@ -231,9 +232,11 @@ aeon_get_block_off(struct super_block *sb, unsigned long blocknr,
 	return (u64)blocknr << PAGE_SHIFT;
 }
 
-/* file.h  */
 extern const struct file_operations aeon_dax_file_operations;
 extern const struct file_operations aeon_dir_operations;
 extern const struct iomap_ops aeon_iomap_ops;
 int aeon_add_dentry(struct dentry *dentry, u64 ino, int inc_link);
+int aeon_remove_dentry(struct dentry *dentry, int dec_link, struct aeon_inode *update);
+
+
 #endif
