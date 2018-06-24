@@ -9,7 +9,7 @@
 static int aeon_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			bool excl)
 {
-	struct aeon_inode *pidir, *pi;
+	struct aeon_inode *pidir;
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode = NULL;
 	u64 pi_addr = 0;
@@ -33,7 +33,7 @@ static int aeon_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	d_instantiate(dentry, inode);
 	//unlock_new_inode(inode);
 
-	pi = aeon_get_block(sb, pi_addr);
+	aeon_dbg("%s: 0x%llx", __func__, pi_addr);
 
 	aeon_dbg("%s: FINISH\n", __func__);
 	return 0;

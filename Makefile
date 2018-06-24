@@ -11,4 +11,5 @@ all:
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=`pwd` clean
+	rm -v balloc.o.ur-safe
 	rm -v mprotect.o.ur-safe

@@ -159,7 +159,7 @@ static inline void *aeon_get_block(struct super_block *sb, u64 block)
 {
 	struct aeon_super_block *ps = aeon_get_super(sb);
 
-	aeon_dbg("%s : 0x%llx\n", __func__, block);
+	aeon_dbg("%s : virt_addr + 0x%llx\n", __func__, block);
 
 	//return block ? ((void *)ps + block) : NULL;
 	return block ? ((void *)ps + block) : NULL;

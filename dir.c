@@ -81,11 +81,8 @@ static int aeon_readdir(struct file *file, struct dir_context *ctx)
 	int ret;
 	int found = 0;
 
-	aeon_dbg("%s: START\n", __func__);
-
 	if (pos == 0) {
 		temp = rb_first(&sih->rb_tree);
-		aeon_dbg("%s: first if statement\n", __func__);
 	}
 	else if (pos == READDIR_END) {
 		return 0;
@@ -131,7 +128,6 @@ static int aeon_readdir(struct file *file, struct dir_context *ctx)
 	}
 
 	ctx->pos = READDIR_END;
-	aeon_dbg("%s: FINISH\n", __func__);
 
 	return 0;
 }

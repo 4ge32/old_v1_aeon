@@ -6,20 +6,27 @@
 #include "aeon.h"
 #include "balloc.h"
 #include "inode.h"
+#include "mprotect.h"
 
 static ssize_t aeon_file_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct inode *inode = iocb->ki_filp->f_mapping->host;
 	ssize_t ret;
 
-	if(iov_iter_count(to))
+	aeon_dbg("%s: START1\n", __func__);
+	aeon_dbg("%s: to->i_count - %lu\n", __func__, to->count);
+
+
+	if(!iov_iter_count(to))
 		return 0;
 
+	aeon_dbg("%s: START2\n", __func__);
 	inode_lock_shared(inode);
 	ret = dax_iomap_rw(iocb, to, &aeon_iomap_ops);
 	inode_unlock_shared(inode);
 
 	file_accessed(iocb->ki_filp);
+	aeon_dbg("%s: FINISH\n", __func__);
 
 	return ret;
 }
@@ -30,6 +37,9 @@ static ssize_t aeon_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct inode *inode = file->f_mapping->host;
 	ssize_t ret;
 
+	aeon_dbg("%s: START\n", __func__);
+
+	aeon_dbg("%s: to->i_count - %lu", __func__, from->count);
 
 	inode_lock(inode);
 	ret = generic_write_checks(iocb, from);
@@ -52,8 +62,8 @@ out_unlock:
 	inode_unlock(inode);
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
+	aeon_dbg("%s: FINISH\n", __func__);
 	return ret;
-	return 0;
 }
 
 const struct file_operations aeon_dax_file_operations = {
@@ -61,51 +71,70 @@ const struct file_operations aeon_dax_file_operations = {
 	.write_iter = aeon_file_write_iter,
 };
 
+/*
+ * return > 0, # of blocks mapped or allocated.
+ * return = 0, if plain lookup failed.
+ * return < 0, error case.
+ */
+static int aeon_dax_get_blocks(struct inode *inode, sector_t iblock,
+	unsigned long max_blocks, u32 *bno, bool *new, bool *boundary, int create)
+{
+	*bno = 5;
+	return 1;
+}
+
 static int aeon_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
 		            unsigned flags, struct iomap *iomap)
 {
 	struct aeon_sb_info *sbi = AEON_SB(inode->i_sb);
-	struct aeon_inode_info *si = AEON_I(inode);
-	struct aeon_inode_info_header *sih = &si->header;
-	unsigned long first_block = 0;
-	unsigned long blocknr = 1;
-	unsigned long ent_blks;
+	unsigned int blkbits = inode->i_blkbits;
+	unsigned long first_block = offset >> blkbits;
+	unsigned long max_blocks = (length + (1 << blkbits) - 1) >> blkbits;
+	unsigned long head_addr = (unsigned long)sbi->virt_addr;
+	bool new = false, boundary = false;
+	u32 bno = 0;
 	int ret;
 
 	aeon_dbg("%s: START\n", __func__);
-	ent_blks = 1;
-	first_block = 10;
-	ret = aeon_free_data_blocks(inode->i_sb, sih, blocknr, ent_blks);
-	ret = aeon_new_data_blocks(inode->i_sb, sih, &blocknr, first_block, ent_blks, ANY_CPU);
+
+	ret = aeon_dax_get_blocks(inode, first_block, max_blocks, &bno, &new,
+			          &boundary, flags & IOMAP_WRITE);
 
 	if (ret < 0)
 		return ret;
 
 	iomap->flags = 0;
 	iomap->bdev = inode->i_sb->s_bdev;
-	iomap->offset = offset;
 	iomap->dax_dev = sbi->s_dax_dev;
+	iomap->offset = (u64)first_block << blkbits;
 
 	if (ret == 0) {
 		iomap->type = IOMAP_HOLE;
 		iomap->addr = IOMAP_NULL_ADDR;
-		iomap->length = 0;
+		iomap->length = 1 << blkbits;
 	} else {
 		iomap->type = IOMAP_MAPPED;
-		iomap->addr = ret;
-		iomap->length = ret;
+		iomap->addr = (u64)bno << (blkbits - 9);
+		iomap->length = (u64)ret << blkbits;
 		iomap->flags |= IOMAP_F_MERGED;
 	}
 
-	aeon_dbg("%s: FINISH\n", __func__);
+	if (new)
+		iomap->flags |= IOMAP_F_NEW;
+
+	aeon_dbg("%s: FINISH, head addr - 0x%lx first_block - 0x%lx ret - 0x%x addr - 0x%llx length - 0x%llx\n", __func__, head_addr, first_block, ret, iomap->addr, iomap->length);
+	aeon_dbg("0x%llx\n", (u64)bno);
+	//aeon_memunlock_range(inode->i_sb, (void *)(head_addr), iomap->length);
 	return 0;
 }
 
 static int aeon_iomap_end(struct inode *inode, loff_t offset, loff_t length,
 			  ssize_t written, unsigned flags, struct iomap *iomap)
 {
-	fs_put_dax(iomap->dax_dev);
+	//struct aeon_sb_info *sbi = AEON_SB(inode->i_sb);
+	//unsigned long head_addr = (unsigned long)sbi->virt_addr;
 
+	//aeon_memlock_range(inode->i_sb, (void *)(head_addr), iomap->length);
 	return 0;
 }
 
